@@ -247,6 +247,25 @@ void setLockStateHardware(bool locked) {
 
 // --- API LAYER CONNECTIONS ---
 
+void sendEsp32Log(String event, String method, String result, String details) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.begin(client, BASE_URL + "/api/esp32/log");
+  http.addHeader("Content-Type", "application/json");
+  
+  String jsonPayload = "{\"api_key\":\"" + API_KEY + "\","
+                       "\"event\":\"" + event + "\","
+                       "\"method\":\"" + method + "\","
+                       "\"result\":\"" + result + "\","
+                       "\"details\":\"" + details + "\"}";
+                        
+  http.POST(jsonPayload);
+  http.end();
+}
+
 void syncDashboardStatus() {
   if (WiFi.status() != WL_CONNECTED || !isLocked || inputPin.length() > 0) return; 
 
@@ -274,6 +293,7 @@ void verifyPinOnline(String pin) {
     setLockStateHardware(false);
     updateUI("ACCESS GRANTED  ", "Welcome " + activeUser);
     toneBuzzer(1000, 300);
+    sendEsp32Log("UNLOCK", "KEYPAD", "SUCCESS", "Offline Master PIN Bypass used.");
     return;
   }
 
@@ -314,6 +334,10 @@ void verifyPinOnline(String pin) {
       setLockStateHardware(false);
       updateUI("ACCESS GRANTED  ", "Welcome " + activeUser);
       toneBuzzer(1000, 300);
+      
+      // OPTION B: Send keypad success log directly to Flask server trail
+      sendEsp32Log("UNLOCK", "KEYPAD", "SUCCESS", "User: " + activeUser);
+      
       http.end();
       return;
     }
@@ -322,6 +346,10 @@ void verifyPinOnline(String pin) {
   updateUI("ACCESS DENIED   ", "  Invalid PIN   ");
   digitalWrite(RED_LED, HIGH);
   toneBuzzer(350, 600);
+  
+  // Send keypad failure log directly to Flask server trail
+  sendEsp32Log("UNLOCK_FAIL", "KEYPAD", "FAILED", "Attempt made with invalid PIN");
+  
   delay(1200);
   setLockStateHardware(true);
   http.end();
@@ -381,6 +409,10 @@ void verifyRfidOnline(String uid) {
       activeUser = "Card Holder";
       setLockStateHardware(false);
       toneBuzzer(1000, 300);
+      
+      // OPTION B: Send RFID success log directly to Flask server trail
+      sendEsp32Log("UNLOCK", "RFID", "SUCCESS", "UID: " + uid);
+      
       http.end();
       return;
     }
@@ -389,6 +421,10 @@ void verifyRfidOnline(String uid) {
   updateUI("ACCESS DENIED   ", "Unregistered Tag");
   digitalWrite(RED_LED, HIGH);
   toneBuzzer(350, 600);
+  
+  // Send RFID failure log directly to Flask server trail
+  sendEsp32Log("UNLOCK_FAIL", "RFID", "FAILED", "Unknown Tag UID: " + uid);
+  
   delay(1200);
   setLockStateHardware(true);
   http.end();
